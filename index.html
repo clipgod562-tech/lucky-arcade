@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Lucky Arcade – Coin Rush, a free arcade game</title>
+<meta name="description" content="Coin Rush: catch coins, dodge bombs, grab power-ups and spin the lucky wheel. Free to play, no sign-up.">
+<!-- ADSENSE: after approval paste your script here:
+<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-XXXXXXXX" crossorigin="anonymous"></script> -->
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,sans-serif;background:radial-gradient(circle at 50% 0,#2b1466,#0d0720 70%);color:#fff;min-height:100vh}
+header{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#1a0d3d;border-bottom:2px solid #f5b301}
+h1{margin:0;font-size:1.25rem;color:#f5b301}
+.wallet{font-weight:bold}
+.wrap{max-width:480px;margin:10px auto;padding:0 10px}
+.ad{background:#24154d;border:1px dashed #6b55a8;color:#9d8fc7;text-align:center;padding:16px;margin:8px 0;border-radius:8px;font-size:.8rem}
+#stage{position:relative;width:100%;aspect-ratio:2/3;max-height:78vh;margin:auto;border-radius:14px;overflow:hidden;border:3px solid #f5b301;box-shadow:0 0 30px #7b3fe488;touch-action:none}
+canvas{width:100%;height:100%;display:block;background:linear-gradient(#1b0f45,#3a1a7a)}
+.ov{position:absolute;inset:0;background:#0d0720e6;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:16px;text-align:center;overflow:auto}
+.ov.hidden{display:none}
+.ov h2{margin:0;font-size:1.9rem;color:#f5b301}
+button{background:#f5b301;color:#222;border:0;padding:12px 22px;border-radius:10px;font-weight:bold;font-size:1.05rem;cursor:pointer}
+button.alt{background:#4a35a0;color:#fff}
+button:disabled{opacity:.4}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.shop{width:100%;display:flex;flex-direction:column;gap:6px}
+.item{display:flex;justify-content:space-between;align-items:center;background:#24154d;padding:8px 12px;border-radius:10px;text-align:left;font-size:.9rem}
+.item button{padding:6px 12px;font-size:.9rem}
+small{color:#b9aee0}
+.legend{font-size:.85rem;color:#d6cdf5;line-height:1.5}
+.wheel{font-size:3rem;min-height:70px}
+footer{text-align:center;font-size:.72rem;color:#9d8fc7;padding:16px}
+footer a{color:#f5b301}
+</style>
+</head>
+<body>
+<header>
+  <h1>🎰 Lucky Arcade</h1>
+  <div class="wallet">🪙 <span id="wallet">0</span> · 🏆 <span id="best">0</span></div>
+</header>
+<div class="wrap">
+  <div class="ad">[Ad slot: 320×50 banner]</div>
+  <div id="stage">
+    <canvas id="c" width="480" height="720"></canvas>
+
+    <div class="ov" id="menu">
+      <h2>🪙 COIN RUSH</h2>
+      <div class="legend">Drag (or ← →) to move your basket.<br>
+      🪙 coin &nbsp; 💎 gem +5 &nbsp; 💣 bomb = lose a life<br>
+      🧲 magnet &nbsp; 🛡️ shield &nbsp; ⭐ double points<br>
+      Chain catches for a bigger combo. Missing a coin resets it!</div>
+      <button onclick="startGame()">▶ PLAY</button>
+      <div class="row"><button class="alt" onclick="openShop()">🛒 Upgrades</button><button class="alt" id="dailyBtn" onclick="daily()">🎁 Daily +300</button></div>
+      <small>Coins are virtual with no cash value. For entertainment only.</small>
+    </div>
+
+    <div class="ov hidden" id="over">
+      <h2>GAME OVER</h2>
+      <div style="font-size:1.3rem">Score <b id="oScore">0</b></div>
+      <div id="oMsg"></div>
+      <div class="wheel" id="wheel">🎡</div>
+      <div class="row">
+        <button id="wheelBtn" onclick="spinWheel()">🎡 Spin Lucky Wheel</button>
+        <button onclick="startGame()">↻ Play again</button>
+        <button class="alt" onclick="openShop()">🛒 Upgrades</button>
+      </div>
+      <div class="ad" style="width:100%">[Ad slot: 300×250 rectangle]</div>
+    </div>
+
+    <div class="ov hidden" id="shopov">
+      <h2>🛒 Upgrades</h2>
+      <div class="shop" id="shop"></div>
+      <button onclick="closeShop()">Back</button>
+    </div>
+  </div>
+  <div class="ad">[Ad slot: 728×90 / responsive]</div>
+</div>
+<footer>
+  For entertainment only. Coins are virtual, have no cash value and can't be withdrawn or exchanged. 18+.<br>
+  © Lucky Arcade · <a href="privacy.html">Privacy</a> · <a href="terms.html">Terms</a>
+</footer>
+
+<script>
+const W=480,H=720,cv=document.getElementById('c'),g=cv.getContext('2d'),$=id=>document.getElementById(id);
+let D=JSON.parse(localStorage.getItem('ca2')||'null')||{wallet:0,best:0,up:{basket:0,life:0,magnet:0},bonus:0};
+const save=()=>{localStorage.setItem('ca2',JSON.stringify(D));$('wallet').textContent=D.wallet;$('best').textContent=D.best};
+save();
+
+// ---------- sound ----------
+let AC;function beep(f,d=.08,t='square',v=.05){try{AC=AC||new (window.AudioContext||window.webkitAudioContext)();const o=AC.createOscillator(),gn=AC.createGain();o.type=t;o.frequency.value=f;gn.gain.value=v;o.connect(gn);gn.connect(AC.destination);o.start();gn.gain.exponentialRampToValueAtTime(.0001,AC.currentTime+d);o.stop(AC.currentTime+d)}catch(e){}}
+
+// ---------- state ----------
+let S=null,mode='menu',mx=W/2,keys={},last=0,wheelUsed=false;
+const COST={basket:[100,250,600],life:[150,400,900],magnet:[120,300,700]};
+function startGame(){
+  closeAll();AC&&AC.resume&&AC.resume();
+  S={t:0,score:0,lives:3+D.up.life,combo:0,mult:1,x:W/2,pw:90+D.up.basket*22,items:[],parts:[],texts:[],spawn:0,
+     magnet:0,shield:0,x2:0,shake:0,caught:0};
+  mode='play';wheelUsed=false;
+}
+function endGame(){
+  mode='over';
+  const earned=Math.floor(S.score/8);D.wallet+=earned;
+  const nb=S.score>D.best;if(nb)D.best=S.score;save();
+  $('oScore').textContent=S.score;
+  $('oMsg').innerHTML=(nb?'🏆 <b>New best!</b><br>':'')+'You earned <b>'+earned+'</b> 🪙';
+  $('wheel').textContent='🎡';$('wheelBtn').disabled=false;
+  $('over').classList.remove('hidden');
+}
+function closeAll(){['menu','over','shopov'].forEach(i=>$(i).classList.add('hidden'))}
+
+// ---------- spawn ----------
+function pick(){
+  const t=S.t,bomb=14+Math.min(t/3,16);
+  const tbl=[['coin',64],['gem',8],['bomb',bomb],['magnet',4],['shield',4],['x2',4]];
+  let tot=tbl.reduce((a,b)=>a+b[1],0),r=Math.random()*tot;
+  for(const [k,w] of tbl){if((r-=w)<0)return k}return 'coin';
+}
+function spawn(){
+  const type=pick();
+  S.items.push({type,x:30+Math.random()*(W-60),y:-30,vy:(170+Math.min(S.t*4.5,230))*(0.85+Math.random()*.3),rot:Math.random()*6,spin:(Math.random()-.5)*4});
+}
+const EMO={coin:'🪙',gem:'💎',bomb:'💣',magnet:'🧲',shield:'🛡️',x2:'⭐'};
+
+// ---------- fx ----------
+function burst(x,y,col,n=10){for(let i=0;i<n;i++){const a=Math.random()*6.28,s=60+Math.random()*180;S.parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s-60,l:.6,c:col})}}
+function float(x,y,txt,col='#fff'){S.texts.push({x,y,txt,col,l:.9})}
+
+// ---------- update ----------
+function update(dt){
+  S.t+=dt;
+  const sp=520;
+  if(keys.ArrowLeft||keys.a)mx-=sp*dt;if(keys.ArrowRight||keys.d)mx+=sp*dt;
+  mx=Math.max(S.pw/2,Math.min(W-S.pw/2,mx));
+  S.x+=(mx-S.x)*Math.min(1,dt*18);
+  S.spawn-=dt;if(S.spawn<=0){spawn();S.spawn=Math.max(.22,.75-S.t*.006)}
+  ['magnet','shield','x2'].forEach(k=>{if(S[k]>0)S[k]-=dt});
+  S.shake=Math.max(0,S.shake-dt);
+  const py=H-70;
+  for(let i=S.items.length-1;i>=0;i--){
+    const it=S.items[i];
+    if(S.magnet>0&&(it.type=='coin'||it.type=='gem')){
+      const dx=S.x-it.x,dy=py-it.y,d=Math.hypot(dx,dy);
+      if(d<230){it.x+=dx/d*420*dt;it.y+=dy/d*220*dt}
+    }
+    it.y+=it.vy*dt;it.rot+=it.spin*dt;
+    // catch
+    if(it.y>py-24&&it.y<py+26&&Math.abs(it.x-S.x)<S.pw/2+10){
+      S.items.splice(i,1);collect(it);continue;
+    }
+    if(it.y>H+30){
+      S.items.splice(i,1);
+      if(it.type=='coin'||it.type=='gem'){if(S.combo>0)float(it.x,H-40,'combo lost','#ff8a8a');S.combo=0;S.mult=1}
+    }
+  }
+  S.parts.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=500*dt;p.l-=dt});S.parts=S.parts.filter(p=>p.l>0);
+  S.texts.forEach(t=>{t.y-=50*dt;t.l-=dt});S.texts=S.texts.filter(t=>t.l>0);
+  if(S.lives<=0)endGame();
+}
+function collect(it){
+  const y=H-70;
+  if(it.type=='coin'||it.type=='gem'){
+    S.combo++;S.mult=Math.min(5,1+Math.floor(S.combo/6));
+    const base=it.type=='gem'?5:1,pts=base*S.mult*(S.x2>0?2:1)*10;
+    S.score+=pts;float(it.x,y-30,'+'+pts,it.type=='gem'?'#7fe9ff':'#ffd84d');
+    burst(it.x,y-10,it.type=='gem'?'#7fe9ff':'#ffd84d',8);
+    beep(it.type=='gem'?980:620+Math.min(S.combo,20)*18,.07,'triangle');
+  }else if(it.type=='bomb'){
+    if(S.shield>0){S.shield=0;float(it.x,y-30,'BLOCKED!','#8affc1');burst(it.x,y,'#8affc1',16);beep(300,.15,'sine')}
+    else{S.lives--;S.combo=0;S.mult=1;S.shake=.35;float(it.x,y-30,'-1 ❤','#ff5a5a');burst(it.x,y,'#ff7a3d',24);beep(90,.3,'sawtooth',.08)}
+  }else{
+    S[it.type]=it.type=='magnet'?8+D.up.magnet*3:it.type=='shield'?12:8;
+    float(it.x,y-30,{magnet:'MAGNET!',shield:'SHIELD!',x2:'DOUBLE!'}[it.type],'#ffe27a');beep(800,.2,'sine');burst(it.x,y,'#fff',12);
+  }
+}
+
+// ---------- draw ----------
+function draw(){
+  g.save();
+  if(S&&S.shake>0)g.translate((Math.random()-.5)*10,(Math.random()-.5)*10);
+  g.clearRect(-20,-20,W+40,H+40);
+  // background stars
+  g.fillStyle='#ffffff22';for(let i=0;i<40;i++){const x=(i*97)%W,y=((i*53)+(S?S.t*30:last/40)*(1+i%3))%H;g.fillRect(x,y,2,2)}
+  if(S){
+    g.textAlign='center';g.textBaseline='middle';
+    S.items.forEach(it=>{g.save();g.translate(it.x,it.y);g.rotate(it.rot*.3);g.font='38px serif';g.fillText(EMO[it.type],0,0);g.restore()});
+    // player
+    const py=H-70;g.font='54px serif';g.fillText('🧺',S.x,py);
+    g.strokeStyle='#f5b30088';g.lineWidth=3;g.beginPath();g.moveTo(S.x-S.pw/2,py+30);g.lineTo(S.x+S.pw/2,py+30);g.stroke();
+    if(S.shield>0){g.strokeStyle='#8affc1';g.lineWidth=4;g.beginPath();g.arc(S.x,py,S.pw/2+8,0,6.28);g.stroke()}
+    if(S.magnet>0){g.strokeStyle='#ff6bd633';g.lineWidth=2;g.beginPath();g.arc(S.x,py,230,0,6.28);g.stroke()}
+    S.parts.forEach(p=>{g.globalAlpha=Math.max(0,p.l*1.6);g.fillStyle=p.c;g.fillRect(p.x,p.y,5,5)});g.globalAlpha=1;
+    g.font='bold 22px system-ui';S.texts.forEach(t=>{g.globalAlpha=Math.min(1,t.l*2);g.fillStyle=t.col;g.fillText(t.txt,t.x,t.y)});g.globalAlpha=1;
+    // HUD
+    g.textAlign='left';g.fillStyle='#fff';g.font='bold 26px system-ui';g.fillText('Score '+S.score,14,28);
+    g.textAlign='right';g.fillText('❤'.repeat(Math.max(0,S.lives)),W-14,28);
+    g.textAlign='center';g.font='bold 20px system-ui';g.fillStyle=S.mult>1?'#ffd84d':'#b9aee0';
+    g.fillText('Combo '+S.combo+'  ×'+S.mult,W/2,62);
+    let bx=14,by=90;g.textAlign='left';g.font='18px system-ui';g.fillStyle='#fff';
+    [['magnet','🧲'],['shield','🛡️'],['x2','⭐']].forEach(([k,e])=>{if(S[k]>0){g.fillText(e+' '+Math.ceil(S[k])+'s',bx,by);by+=26}});
+  }
+  g.restore();
+}
+
+// ---------- loop ----------
+function loop(ts){
+  const dt=Math.min(.05,(ts-last)/1000||0);last=ts;
+  if(mode=='play')update(dt);
+  draw();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// ---------- input ----------
+function setX(e){const r=cv.getBoundingClientRect();mx=(e.clientX-r.left)*W/r.width}
+cv.addEventListener('pointerdown',setX);cv.addEventListener('pointermove',setX);
+addEventListener('keydown',e=>{keys[e.key]=true;if(e.key==' '&&mode!='play'&&$('shopov').classList.contains('hidden'))startGame();if(['ArrowLeft','ArrowRight'].includes(e.key))e.preventDefault()});
+addEventListener('keyup',e=>keys[e.key]=false);
+
+// ---------- wheel / daily / shop ----------
+function spinWheel(){
+  if(wheelUsed)return;wheelUsed=true;$('wheelBtn').disabled=true;
+  const prizes=[[10,40],[25,30],[50,18],[100,9],[250,3]];
+  let r=Math.random()*100,win=10;for(const [v,w] of prizes){if((r-=w)<0){win=v;break}}
+  let n=0;const iv=setInterval(()=>{
+    $('wheel').textContent='🎡 '+prizes[Math.floor(Math.random()*prizes.length)][0];beep(300+n*30,.05);
+    if(++n>16){clearInterval(iv);$('wheel').textContent='🎉 +'+win+' 🪙';D.wallet+=win;save();beep(1000,.3,'triangle')}
+  },90);
+}
+function daily(){
+  const t=Date.now();if(t-D.bonus<864e5){alert('Come back tomorrow for more coins!');return}
+  D.bonus=t;D.wallet+=300;save();alert('+300 coins!');
+}
+function openShop(){$('menu').classList.add('hidden');$('over').classList.add('hidden');$('shopov').classList.remove('hidden');renderShop()}
+function closeShop(){$('shopov').classList.add('hidden');(mode=='over'?$('over'):$('menu')).classList.remove('hidden')}
+function renderShop(){
+  const defs=[['basket','🧺 Bigger basket','Wider catch area'],['life','❤ Extra life','Start with more lives'],['magnet','🧲 Magnet boost','Magnet lasts longer']];
+  $('shop').innerHTML=defs.map(([k,n,d])=>{
+    const lv=D.up[k],max=lv>=3,c=COST[k][lv];
+    return `<div class="item"><div><b>${n}</b> (Lv ${lv}/3)<br><small>${d}</small></div>
+    <button ${max||D.wallet<c?'disabled':''} onclick="buy('${k}')">${max?'MAX':'🪙 '+c}</button></div>`}).join('')+
+    `<small>Your coins: 🪙 ${D.wallet}</small>`;
+}
+function buy(k){const c=COST[k][D.up[k]];if(D.wallet>=c){D.wallet-=c;D.up[k]++;save();renderShop()}}
+</script>
+</body>
+</html>
